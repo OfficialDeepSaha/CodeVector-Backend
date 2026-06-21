@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeVector Products</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #1a1a2e; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        header { text-align: center; margin-bottom: 2rem; }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #666; font-size: 0.95rem; }
+        .controls { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+        select, button { padding: 0.6rem 1rem; border-radius: 8px; border: 1px solid #ddd; font-size: 0.9rem; cursor: pointer; }
+        select { min-width: 180px; background: white; }
+        button { background: #4f46e5; color: white; border: none; font-weight: 500; }
+        button:hover { background: #4338ca; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .stats { color: #666; font-size: 0.85rem; margin-bottom: 1rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.2rem; }
+        .card { background: white; border-radius: 12px; padding: 1.2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); transition: transform 0.15s, box-shadow 0.15s; }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+        .card-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.6rem; }
+        .card-id { font-size: 0.75rem; color: #999; font-weight: 500; }
+        .category-badge { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 20px; background: #eef2ff; color: #4f46e5; font-weight: 500; }
+        .card-name { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.4rem; line-height: 1.3; }
+        .card-price { font-size: 1.25rem; color: #059669; font-weight: 700; }
+        .card-date { font-size: 0.78rem; color: #999; margin-top: 0.6rem; }
+        .pagination { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; align-items: center; }
+        .loading { text-align: center; padding: 3rem; color: #666; }
+        .error { background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; text-align: center; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .loading { animation: pulse 1.5s infinite; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>CodeVector Products</h1>
+            <p class="subtitle">Browse 200,000+ products with cursor-based pagination</p>
+        </header>
+
+        <div class="controls">
+            <select id="categoryFilter">
+                <option value="">All Categories</option>
+            </select>
+            <select id="pageSize">
+                <option value="10">10 per page</option>
+                <option value="20" selected>20 per page</option>
+                <option value="50">50 per page</option>
+            </select>
+            <button id="refreshBtn" onclick="loadProducts()">Refresh</button>
+            <button id="addProductBtn" onclick="addRandomProduct()">+ Add Random Product</button>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div id="products" class="grid"></div>
+        <div id="loading" class="loading" style="display:none;">Loading...</div>
+        <div id="error" class="error" style="display:none;"></div>
+
+        <div class="pagination">
+            <button id="prevBtn" onclick="prevPage()" disabled>← Previous</button>
+            <span id="pageInfo">Page 1</span>
+            <button id="nextBtn" onclick="nextPage()">Next →</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let currentCursor = null;
+        let prevCursor = null;
+        let cursorHistory = [];
+        let currentCategory = "";
+        let currentLimit = 20;
+        let pageNum = 1;
+
+        async function fetchCategories() {
+            try {
+                const res = await fetch(`${API_BASE}/categories`);
+                const cats = await res.json();
+                const select = document.getElementById('categoryFilter');
+                select.innerHTML = '<option value="">All Categories</option>';
+                cats.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.error('Failed to load categories', e); }
+        }
+
+        async function loadProducts(cursor = null, isNext = true) {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('products').innerHTML = '';
+
+            const params = new URLSearchParams();
+            if (currentCategory) params.append('category', currentCategory);
+            if (cursor) params.append('cursor', cursor);
+            params.append('limit', currentLimit);
+
+            try {
+                const res = await fetch(`${API_BASE}/products?${params}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                renderProducts(data.items);
+
+                // Update pagination state
+                if (isNext && cursor) {
+                    cursorHistory.push(cursor);
+                }
+
+                currentCursor = data.next_cursor;
+                document.getElementById('nextBtn').disabled = !data.has_more;
+                document.getElementById('prevBtn').disabled = pageNum <= 1;
+                document.getElementById('pageInfo').textContent = `Page ${pageNum}`;
+
+                document.getElementById('stats').textContent = 
+                    `Showing ${data.items.length} products${currentCategory ? ' in ' + currentCategory : ''}` +
+                    `${data.has_more ? ' • More available' : ' • End of results'}`;
+
+            } catch (e) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'Error: ' + e.message;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function renderProducts(items) {
+            const grid = document.getElementById('products');
+            if (items.length === 0) {
+                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#999;padding:3rem;">No products found</div>';
+                return;
+            }
+            items.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                const date = new Date(p.created_at).toLocaleDateString();
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span class="card-id">#${p.id}</span>
+                        <span class="category-badge">${p.category}</span>
+                    </div>
+                    <div class="card-name">${escapeHtml(p.name)}</div>
+                    <div class="card-price">$${p.price}</div>
+                    <div class="card-date">Added ${date}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function nextPage() {
+            if (!currentCursor) return;
+            pageNum++;
+            loadProducts(currentCursor, true);
+        }
+
+        function prevPage() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            // Go back to previous cursor
+            if (cursorHistory.length > 0) {
+                cursorHistory.pop(); // Remove current
+                const prev = cursorHistory.length > 0 ? cursorHistory[cursorHistory.length - 1] : null;
+                loadProducts(prev, false);
+            } else {
+                loadProducts(null, false);
+            }
+        }
+
+        async function addRandomProduct() {
+            const categories = Array.from(document.getElementById('categoryFilter').options)
+                .slice(1).map(o => o.value);
+            const cat = categories[Math.floor(Math.random() * categories.length)];
+            const adjectives = ['Premium','Smart','Ultra','Pro','Deluxe','Compact','Wireless','Digital'];
+            const nouns = ['Device','Kit','System','Pack','Set','Unit'];
+            const name = `${adjectives[Math.floor(Math.random()*adjectives.length)]} ${cat} ${nouns[Math.floor(Math.random()*nouns.length)]}`;
+
+            try {
+                const res = await fetch(`${API_BASE}/products`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, category: cat, price: (Math.random() * 500 + 5).toFixed(2) })
+                });
+                if (res.ok) {
+                    alert('Product added! Browse to see it appear at the top.');
+                }
+            } catch (e) { alert('Failed to add product'); }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('categoryFilter').addEventListener('change', (e) => {
+            currentCategory = e.target.value;
+            pageNum = 1;
+            cursorHistory = [];
+            currentCursor = null;
+            loadProducts(null);
+        });
+
+        document.getElementById('pageSize').addEventListener('change', (e) => {
+            currentLimit = parseInt(e.target.value);
+            pageNum = 1;
+            cursorHistory = [];
+            currentCursor = null;
+            loadProducts(null);
+        });
+
+        // Init
+        fetchCategories();
+        loadProducts();
+    </script>
+</body>
+</html>
