@@ -2,8 +2,7 @@
 
 A FastAPI backend for browsing 200,000+ products with **fast, correct pagination**.
 
-🔗 **Live Demo**: [Your Render URL here]  
-📁 **GitHub**: [Your repo here]
+🔗 **Live Demo**: https://codevector-backend-f7kh.onrender.com  
 
 ## 🎯 Key Design Decisions
 
